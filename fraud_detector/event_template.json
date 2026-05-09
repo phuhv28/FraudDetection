@@ -1,0 +1,13 @@
+{
+    "trans_date_trans_time": "yyyy-MM-dd hh:mm:ss",
+    "dob": "yyyy-MM-dd",
+    "amt": "<float>",
+    "lat": "<float>", "long": "<float>", 
+    "merch_lat": "<float>", "merch_long": "<float>",
+    "category": "ui_dropdowns.json[category]",
+    "gender": "M/F",
+    "state": "ui_dropdowns.json[state]",
+    "city_pop": "<bừa 1 số từ 2000 - 100000",
+    "trans_count_24h": "<dùng hệ thống đếm thoi dựa trên cc_num>", "amt_sum_24h": "<dùng hệ thống đếm thoi dựa trên cc_num>",
+    "trans_count_7d": "<dùng hệ thống đếm thoi dựa trên cc_num>", "amt_sum_7d": "<dùng hệ thống đếm thoi dựa trên cc_num>"
+}
