@@ -1,5 +1,5 @@
 import json
-# Import cái class AI mày vừa viết ở file kia
+# Import cái class AI viết ở file kia
 from fraud_detector import FraudDetector
 
 print("===== BẬT HỆ THỐNG KIỂM SOÁT GIAN LẬN =====")
@@ -23,7 +23,7 @@ print("[+] Não AI đã sẵn sàng!\n")
 # =====================================================================
 event_normal = {
     "trans_date_trans_time": "2024-05-09 08:30:00", # Mua lúc 8h rưỡi sáng
-    "dob": "1990-12-01",
+    "dob": "1990-12-01",    
     "amt": 25.5, # Quẹt có 25 đô
     "lat": 40.7128, "long": -74.0060,
     "merch_lat": 40.7130, "merch_long": -74.0050, # Cửa hàng sát vách nhà
