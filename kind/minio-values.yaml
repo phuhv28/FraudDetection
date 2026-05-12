@@ -1,42 +1,47 @@
-# 1. Thông tin xác thực
-auth:
-  rootUser: "minioadmin"
-  rootPassword: "minioadmin123"
+# minio-values.yaml - Official MinIO (đã tối ưu cho Kind)
 
-# 2. Cấu hình vận hành (Dành cho bài tập lớn: Standalone là đủ)
 mode: standalone
+replicas: 1
 
-# 3. Lưu trữ (Persistence)
+rootUser: "admin"
+rootPassword: "YourStrongPassword123!"
+
+image:
+  repository: quay.io/minio/minio
+  tag: "latest"
+  pullPolicy: IfNotPresent
+
+console:
+  enabled: true
+  image:
+    repository: quay.io/minio/console
+    tag: "latest"
+    pullPolicy: IfNotPresent
+
 persistence:
   enabled: true
-  size: 20Gi
+  size: 50Gi
+  storageClass: ""          # local-path trên Kind
 
-# 4. Tài nguyên cho MinIO Server (Khắc phục Warning)
+service:
+  type: ClusterIP
+  port: 9000
+  consolePort: 9001
+
+# Tắt provisioning job để tránh timeout (bạn tạo bucket sau cũng được)
+provisioning:
+  enabled: false
+
 resources:
   requests:
-    cpu: "100m"
-    memory: "256Mi"
+    memory: 512Mi
+    cpu: 250m
   limits:
-    cpu: "500m"
-    memory: "512Mi"
+    memory: 2Gi
+    cpu: 1000m
 
-# 5. Tài nguyên cho MinIO Console (Khắc phục Warning cuối cùng)
-console:
-  resources:
-    requests:
-      cpu: "50m"
-      memory: "128Mi"
-    limits:
-      cpu: "200m"
-      memory: "256Mi"
+metrics:
+  enabled: false
 
-# 6. Cấu hình mạng (NodePort để truy cập từ trình duyệt máy thật)
-service:
-  type: NodePort
-  nodePorts:
-    api: 30080
-
-consoleService:
-  type: NodePort
-  nodePorts:
-    console: 30900
+ingress:
+  enabled: false

@@ -1,0 +1,173 @@
+---
+# 📦 ConfigMap for Fraud Detection Configuration
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: fraud-config
+  namespace: fraud-detection
+data:
+  KAFKA_BOOTSTRAP_SERVERS: "my-cluster-kafka-bootstrap.kafka.svc.cluster.local:9092"
+  FRAUD_THRESHOLD: "0.2426"
+  LOG_LEVEL: "INFO"
+
+---
+# 🔐 Secret for Gemini API Key
+apiVersion: v1
+kind: Secret
+metadata:
+  name: fraud-secrets
+  namespace: fraud-detection
+type: Opaque
+stringData:
+  GEMINI_API_KEY: "YOUR_GEMINI_API_KEY_HERE"  # 🔴 REPLACE THIS!
+
+---
+# 📡 Kafka Consumer Deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: fraud-detector-consumer
+  namespace: fraud-detection
+  labels:
+    app: fraud-detector-consumer
+    component: streaming
+spec:
+  replicas: 2  # Scale horizontally nếu cần
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  selector:
+    matchLabels:
+      app: fraud-detector-consumer
+  template:
+    metadata:
+      labels:
+        app: fraud-detector-consumer
+        component: streaming
+    spec:
+      serviceAccountName: fraud-detection-sa
+      
+      # Restart nếu pod bị crash
+      restartPolicy: Always
+      
+      # Volume để lưu logs
+      volumes:
+      - name: logs
+        emptyDir: {}
+      
+      containers:
+      - name: kafka-consumer
+        image: fraud-detection:latest
+        imagePullPolicy: IfNotPresent
+        
+        # Environment variables từ ConfigMap + Secret
+        envFrom:
+        - configMapRef:
+            name: fraud-config
+        - secretRef:
+            name: fraud-secrets
+        
+        # Resource limits
+        resources:
+          requests:
+            memory: "512Mi"
+            cpu: "500m"
+          limits:
+            memory: "1Gi"
+            cpu: "1000m"
+        
+        # Liveness probe - restart nếu không khoẻ
+        livenessProbe:
+          exec:
+            command:
+            - python
+            - -c
+            - "import socket; socket.create_connection(('my-cluster-kafka-bootstrap.kafka.svc.cluster.local', 9092), timeout=5)"
+          initialDelaySeconds: 30
+          periodSeconds: 30
+          timeoutSeconds: 10
+          failureThreshold: 3
+        
+        # Readiness probe - traffic chỉ đến khi ready
+        readinessProbe:
+          exec:
+            command:
+            - python
+            - -c
+            - "import socket; socket.create_connection(('my-cluster-kafka-bootstrap.kafka.svc.cluster.local', 9092), timeout=5)"
+          initialDelaySeconds: 10
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 2
+        
+        # Volume mounts
+        volumeMounts:
+        - name: logs
+          mountPath: /var/log/fraud-detector
+        
+        # Graceful shutdown
+        lifecycle:
+          preStop:
+            exec:
+              command: ["/bin/sh", "-c", "sleep 15"]
+
+---
+# Service Monitor (optional - for Prometheus)
+apiVersion: v1
+kind: Service
+metadata:
+  name: fraud-detector-consumer
+  namespace: fraud-detection
+  labels:
+    app: fraud-detector-consumer
+spec:
+  selector:
+    app: fraud-detector-consumer
+  ports:
+  - name: metrics
+    port: 8080
+    targetPort: 8080
+  type: ClusterIP
+
+---
+# HPA - Auto-scaling dựa trên CPU/Memory
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: fraud-detector-consumer-hpa
+  namespace: fraud-detection
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: fraud-detector-consumer
+  minReplicas: 2
+  maxReplicas: 5
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 70
+  - type: Resource
+    resource:
+      name: memory
+      target:
+        type: Utilization
+        averageUtilization: 80
+  behavior:
+    scaleUp:
+      stabilizationWindowSeconds: 60
+      policies:
+      - type: Percent
+        value: 50
+        periodSeconds: 60
+    scaleDown:
+      stabilizationWindowSeconds: 300
+      policies:
+      - type: Percent
+        value: 50
+        periodSeconds: 60

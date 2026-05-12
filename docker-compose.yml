@@ -1,0 +1,127 @@
+version: '3.8'
+
+services:
+  # Kafka Broker (Simple - single node, not using Strimzi)
+  kafka:
+    image: confluentinc/cp-kafka:7.5.0
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:29092,PLAINTEXT_HOST://kafka:9092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: 'true'
+    ports:
+      - "9092:9092"
+    depends_on:
+      - zookeeper
+    networks:
+      - fraud-network
+    healthcheck:
+      test: ["CMD", "kafka-broker-api-versions.sh", "--bootstrap-server", "localhost:9092"]
+      interval: 5s
+      timeout: 10s
+      retries: 5
+
+  # Zookeeper for Kafka
+  zookeeper:
+    image: confluentinc/cp-zookeeper:7.5.0
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKEEPER_TICK_TIME: 2000
+    ports:
+      - "2181:2181"
+    networks:
+      - fraud-network
+
+  # Kafka UI (Optional - for monitoring)
+  kafka-ui:
+    image: provectuslabs/kafka-ui:latest
+    environment:
+      KAFKA_CLUSTERS_0_NAME: local
+      KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: kafka:29092
+      KAFKA_CLUSTERS_0_ZOOKEEPER: zookeeper:2181
+    ports:
+      - "8080:8080"
+    depends_on:
+      - kafka
+      - zookeeper
+    networks:
+      - fraud-network
+
+  # Fraud Detector Consumer
+  fraud-consumer:
+    build:
+      context: .
+      dockerfile: Dockerfile.kafka-consumer
+    environment:
+      KAFKA_BOOTSTRAP_SERVERS: kafka:29092
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-your_key_here}
+      LOG_LEVEL: INFO
+    depends_on:
+      kafka:
+        condition: service_healthy
+    networks:
+      - fraud-network
+    volumes:
+      - ./fraud_detector:/app/fraud_detector
+      - ./kafka:/app/kafka
+    command: python -u kafka/kafka_consumer.py --bootstrap-servers kafka:29092
+
+  # Flink Job Manager
+  flink-jobmanager:
+    image: flink:1.18-scala_2.12
+    environment:
+      JOB_MANAGER_RPC_ADDRESS: flink-jobmanager
+      JOB_MANAGER_RPC_PORT: 6123
+      KAFKA_BOOTSTRAP_SERVERS: kafka:29092
+    ports:
+      - "6123:6123"
+      - "8081:8081"
+    networks:
+      - fraud-network
+    command: jobmanager
+    depends_on:
+      - kafka
+
+  # Flink Task Manager
+  flink-taskmanager:
+    image: flink:1.18-scala_2.12
+    environment:
+      JOB_MANAGER_RPC_ADDRESS: flink-jobmanager
+      KAFKA_BOOTSTRAP_SERVERS: kafka:29092
+    ports:
+      - "6124:6124"
+    networks:
+      - fraud-network
+    command: taskmanager
+    depends_on:
+      - flink-jobmanager
+
+  # Kafka Producer (for testing)
+  test-producer:
+    build:
+      context: .
+      dockerfile: Dockerfile.kafka-consumer
+    environment:
+      KAFKA_BOOTSTRAP_SERVERS: kafka:29092
+    depends_on:
+      kafka:
+        condition: service_healthy
+    networks:
+      - fraud-network
+    volumes:
+      - ./fraud_detector:/app/fraud_detector
+      - ./kafka:/app/kafka
+    command: python kafka/producer_fraud.py --bootstrap-servers kafka:29092 --count 1000
+    profiles:
+      - test
+
+networks:
+  fraud-network:
+    driver: bridge
+
+volumes:
+  kafka-data:
+  zk-data:

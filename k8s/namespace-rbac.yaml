@@ -1,0 +1,93 @@
+---
+# 🔧 Namespace
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: fraud-detection
+  labels:
+    name: fraud-detection
+
+---
+# 👥 ServiceAccount for Fraud Detection
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: fraud-detection-sa
+  namespace: fraud-detection
+
+---
+# 🔑 ClusterRole for Fraud Detection
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: fraud-detection-role
+rules:
+# For Flink Job Manager
+- apiGroups: [""]
+  resources: ["pods", "services", "endpoints", "configmaps"]
+  verbs: ["get", "list", "watch", "create", "delete", "patch"]
+- apiGroups: ["apps"]
+  resources: ["deployments", "statefulsets"]
+  verbs: ["get", "list", "watch"]
+- apiGroups: ["batch"]
+  resources: ["jobs"]
+  verbs: ["get", "list", "watch", "create", "delete"]
+
+---
+# 🔗 ClusterRoleBinding
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: fraud-detection-binding
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: fraud-detection-role
+subjects:
+- kind: ServiceAccount
+  name: fraud-detection-sa
+  namespace: fraud-detection
+
+---
+# 🌍 NetworkPolicy - Allow intra-namespace communication
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: fraud-detection-netpolicy
+  namespace: fraud-detection
+spec:
+  podSelector: {}
+  policyTypes:
+  - Ingress
+  - Egress
+  ingress:
+  # Allow intra-namespace communication
+  - from:
+    - namespaceSelector:
+        matchLabels:
+          name: fraud-detection
+  # Allow from kafka namespace
+  - from:
+    - namespaceSelector:
+        matchLabels:
+          name: kafka
+  egress:
+  # Allow to kafka
+  - to:
+    - namespaceSelector:
+        matchLabels:
+          name: kafka
+    ports:
+    - protocol: TCP
+      port: 9092
+  # Allow DNS
+  - to:
+    - namespaceSelector: {}
+    ports:
+    - protocol: UDP
+      port: 53
+  # Allow within namespace
+  - to:
+    - namespaceSelector:
+        matchLabels:
+          name: fraud-detection

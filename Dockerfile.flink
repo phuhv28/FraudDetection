@@ -1,0 +1,40 @@
+# Dockerfile for Flink Fraud Detection Pipeline
+FROM flink:1.18-java17-scala_2.12
+
+WORKDIR /opt/flink/
+
+# Install Python and dependencies
+RUN apt-get update && apt-get install -y \
+    python3.12 \
+    python3-pip \
+    gcc \
+    g++ \
+    libssl-dev \
+    libffi-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+# Copy requirements
+COPY kafka/requirements.txt ./
+COPY fraud_detector/requirements.txt ./fraud_detector_requirements.txt
+
+# Install Python dependencies
+RUN pip install --no-cache-dir -r requirements.txt
+RUN pip install --no-cache-dir -r fraud_detector_requirements.txt
+
+# Copy fraud detector module
+COPY fraud_detector/ ./fraud_detector/
+
+# Copy Flink pipeline
+COPY flink/ ./flink/
+
+# Copy entrypoint script
+COPY flink/docker-entrypoint.sh ./docker-entrypoint.sh
+RUN chmod +x ./docker-entrypoint.sh
+
+# Set environment variables
+ENV KAFKA_BOOTSTRAP_SERVERS=my-cluster-kafka-bootstrap.kafka.svc.cluster.local:9092
+ENV GEMINI_API_KEY=${GEMINI_API_KEY}
+ENV PYTHONPATH=/opt/flink:/opt/flink/fraud_detector
+
+# Run Flink with PyFlink job
+ENTRYPOINT ["./docker-entrypoint.sh"]

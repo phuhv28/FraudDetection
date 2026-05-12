@@ -1,0 +1,35 @@
+# Dockerfile for Kafka Consumer + Fraud Detector
+FROM python:3.12-slim
+
+WORKDIR /app
+
+# Install system dependencies
+RUN apt-get update && apt-get install -y \
+    gcc \
+    g++ \
+    libssl-dev \
+    libffi-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+# Copy requirements
+COPY kafka/requirements.txt ./
+COPY fraud_detector/requirements.txt ./fraud_detector_requirements.txt
+
+# Install Python dependencies
+RUN pip install --no-cache-dir -r requirements.txt
+RUN pip install --no-cache-dir -r fraud_detector_requirements.txt
+
+# Copy fraud detector
+COPY fraud_detector/ ./fraud_detector/
+
+# Copy kafka consumer
+COPY kafka/ ./kafka/
+
+# Set environment variables
+ENV PYTHONUNBUFFERED=1
+ENV KAFKA_BOOTSTRAP_SERVERS=my-cluster-kafka-bootstrap.kafka.svc.cluster.local:9092
+ENV GEMINI_API_KEY=${GEMINI_API_KEY}
+
+# Run the consumer
+CMD ["python", "-u", "kafka/kafka_consumer.py", \
+     "--bootstrap-servers", "${KAFKA_BOOTSTRAP_SERVERS}"]

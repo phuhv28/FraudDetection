@@ -1,0 +1,246 @@
+---
+# 🔥 Flink Job Manager Deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: flink-jobmanager
+  namespace: fraud-detection
+  labels:
+    app: flink
+    component: jobmanager
+spec:
+  replicas: 1  # Job Manager - always 1
+  selector:
+    matchLabels:
+      app: flink
+      component: jobmanager
+  template:
+    metadata:
+      labels:
+        app: flink
+        component: jobmanager
+    spec:
+      serviceAccountName: fraud-detection-sa
+      restartPolicy: Always
+      
+      containers:
+      - name: jobmanager
+        image: fraud-detection-flink:latest
+        imagePullPolicy: IfNotPresent
+        
+        args:
+        - "jobmanager"
+        
+        envFrom:
+        - configMapRef:
+            name: fraud-config
+        - secretRef:
+            name: fraud-secrets
+        
+        env:
+        - name: JOB_MANAGER_RPC_ADDRESS
+          value: flink-jobmanager
+        - name: JOB_MANAGER_RPC_PORT
+          value: "6123"
+        - name: TASK_MANAGER_RPC_PORT
+          value: "6124"
+        - name: FLINK_PROPERTIES
+          value: |
+            jobmanager.rpc.address: flink-jobmanager
+            jobmanager.rpc.port: 6123
+            taskmanager.rpc.port: 6124
+            parallelism.default: 2
+            taskmanager.numberOfTaskSlots: 2
+        
+        ports:
+        - name: rpc
+          containerPort: 6123
+        - name: blob
+          containerPort: 6124
+        - name: ui
+          containerPort: 8081
+        
+        resources:
+          requests:
+            memory: "1Gi"
+            cpu: "500m"
+          limits:
+            memory: "2Gi"
+            cpu: "1000m"
+        
+        livenessProbe:
+          tcpSocket:
+            port: 6123
+          initialDelaySeconds: 30
+          periodSeconds: 30
+          failureThreshold: 3
+        
+        readinessProbe:
+          httpGet:
+            path: /
+            port: 8081
+          initialDelaySeconds: 20
+          periodSeconds: 10
+          failureThreshold: 2
+
+---
+# Service for Job Manager
+apiVersion: v1
+kind: Service
+metadata:
+  name: flink-jobmanager
+  namespace: fraud-detection
+  labels:
+    app: flink
+    component: jobmanager
+spec:
+  type: ClusterIP
+  ports:
+  - name: rpc
+    port: 6123
+    targetPort: 6123
+  - name: blob
+    port: 6124
+    targetPort: 6124
+  - name: ui
+    port: 8081
+    targetPort: 8081
+  selector:
+    app: flink
+    component: jobmanager
+
+---
+# 🚀 Flink Task Manager Deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: flink-taskmanager
+  namespace: fraud-detection
+  labels:
+    app: flink
+    component: taskmanager
+spec:
+  replicas: 2  # Scale horizontally
+  selector:
+    matchLabels:
+      app: flink
+      component: taskmanager
+  template:
+    metadata:
+      labels:
+        app: flink
+        component: taskmanager
+    spec:
+      serviceAccountName: fraud-detection-sa
+      restartPolicy: Always
+      
+      containers:
+      - name: taskmanager
+        image: fraud-detection-flink:latest
+        imagePullPolicy: IfNotPresent
+        
+        args:
+        - "taskmanager"
+        
+        envFrom:
+        - configMapRef:
+            name: fraud-config
+        - secretRef:
+            name: fraud-secrets
+        
+        env:
+        - name: JOB_MANAGER_RPC_ADDRESS
+          value: flink-jobmanager
+        - name: JOB_MANAGER_RPC_PORT
+          value: "6123"
+        - name: TASK_MANAGER_RPC_PORT
+          value: "6124"
+        - name: FLINK_PROPERTIES
+          value: |
+            jobmanager.rpc.address: flink-jobmanager
+            jobmanager.rpc.port: 6123
+            taskmanager.rpc.port: 6124
+            parallelism.default: 2
+            taskmanager.numberOfTaskSlots: 2
+        
+        ports:
+        - name: data
+          containerPort: 6124
+        - name: rpc
+          containerPort: 6125
+        
+        resources:
+          requests:
+            memory: "1Gi"
+            cpu: "500m"
+          limits:
+            memory: "2Gi"
+            cpu: "1000m"
+        
+        livenessProbe:
+          tcpSocket:
+            port: 6124
+          initialDelaySeconds: 30
+          periodSeconds: 30
+          failureThreshold: 3
+
+---
+# HPA for Task Manager
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: flink-taskmanager-hpa
+  namespace: fraud-detection
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: flink-taskmanager
+  minReplicas: 2
+  maxReplicas: 5
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 75
+  - type: Resource
+    resource:
+      name: memory
+      target:
+        type: Utilization
+        averageUtilization: 80
+
+---
+# ConfigMap for Flink Configuration
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: flink-config
+  namespace: fraud-detection
+data:
+  flink-conf.yaml: |
+    # Job Manager
+    jobmanager.rpc.address: flink-jobmanager
+    jobmanager.rpc.port: 6123
+    jobmanager.memory.process.size: 1600m
+    
+    # Task Manager
+    taskmanager.memory.process.size: 1728m
+    taskmanager.numberOfTaskSlots: 2
+    
+    # Parallelism
+    parallelism.default: 2
+    
+    # State backends
+    state.backend: rocksdb
+    state.checkpoints.dir: file:///flink/checkpoints
+    
+    # High availability
+    high-availability: kubernetes
+    high-availability.storageDir: file:///flink/ha
+    
+    # Logging
+    rootLogger.level: INFO
+    logger.org.apache.kafka: WARN
