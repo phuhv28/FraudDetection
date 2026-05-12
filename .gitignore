@@ -1,4 +1,5 @@
 flink/__pycache__/*
+flink/venv/*
 fraud_detector/.venv/*
 fraud_detector/__pycache__/*
 kafka/__pycache__/*
