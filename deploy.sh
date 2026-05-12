@@ -44,7 +44,7 @@ check_prerequisites() {
         print_error "kubectl is not installed"
         exit 1
     fi
-    print_success "kubectl found: $(kubectl version --client --short)"
+    print_success "kubectl found: $(kubectl version --client)"
     
     # Check cluster connection
     if ! kubectl cluster-info &> /dev/null; then
