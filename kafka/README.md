@@ -7,10 +7,40 @@ Hệ thống sử dụng **Strimzi Operator** để quản lý Kafka. Cụm Kafk
 ## 🛠 Yêu cầu hệ thống
 
 - **Kubernetes Cluster**: 1 Master, 3 Workers (Ubuntu 22.04 trên VMware).
-- **Storage Class**: `local-path` (đã được cài đặt sẵn).
+- **Storage Class**: `local-path`.
 - **Namespace**: `kafka`.
 
 ---
+
+## Cài đặt Storage Class
+
+### Bước 1: Cài đặt Local Path Provisioner (Rancher)
+
+Chạy lệnh trên máy master:
+
+```bash
+kubectl apply -f https://raw.githubusercontent.com/rancher/local-path-provisioner/master/deploy/local-path-storage.yaml
+```
+
+### Bước 2: Kiểm tra StorageClass
+
+Sau khi chạy lệnh trên, hãy kiểm tra xem hệ thống đã nhận diện được "kho lưu trữ" mới chưa:
+
+```bash
+kubectl get sc
+```
+
+Bạn sẽ thấy một StorageClass tên là local-path.
+
+### Bước 3: Thiết lập làm Storage mặc định (Default)
+
+Để khi triển khai Kafka (hoặc các ứng dụng khác) không cần phải chỉ định tên StorageClass thủ công, hãy đặt local-path làm mặc định:
+
+```bash
+kubectl patch storageclass local-path -p '{"metadata": {"annotations":{"storageclass.kubernetes.io/is-default-class":"true"}}}'
+```
+
+Bây giờ, khi chạy lại lệnh "kubectl get sc", sẽ thấy local-path (default).
 
 ## 🏗 Các bước cài đặt
 
