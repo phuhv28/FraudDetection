@@ -6,7 +6,7 @@ Hệ thống sử dụng **Strimzi Operator** để quản lý Kafka. Cụm Kafk
 
 ## 🛠 Yêu cầu hệ thống
 
-- **Kubernetes Cluster**: 1 Master, 3 Workers (Ubuntu 22.04 trên VMware).
+- **Kubernetes Cluster**: 1 Master, 3 Workers.
 - **Storage Class**: `local-path`.
 - **Namespace**: `kafka`.
 
@@ -86,4 +86,12 @@ kubectl get pods -n kafka -o wide
 
 # Kiểm tra trạng thái Ready của Kafka Resource
 kubectl get kafka -n kafka
+```
+
+### Bước 5: Tạo topic
+
+Tạo topic transaction.raw để xử lý các event từ producer
+
+```bash
+kubectl apply -f transaction-raw-topic.yaml
 ```
