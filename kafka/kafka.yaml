@@ -41,7 +41,6 @@ spec:
     config:
       num.partitions: 3
       offsets.topic.replication.factor: 3
-      offsets.topic.replication.factor: 3
       transaction.state.log.replication.factor: 3
       transaction.state.log.min.isr: 2
       default.replication.factor: 3

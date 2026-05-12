@@ -1,42 +1,8 @@
-# 1. Thông tin xác thực
-auth:
-  rootUser: "minioadmin"
-  rootPassword: "minioadmin123"
-
-# 2. Cấu hình vận hành (Dành cho bài tập lớn: Standalone là đủ)
+rootUser: "admin"
+rootPassword: "admin123"
 mode: standalone
-
-# 3. Lưu trữ (Persistence)
-persistence:
-  enabled: true
-  size: 20Gi
-
-# 4. Tài nguyên cho MinIO Server (Khắc phục Warning)
-resources:
-  requests:
-    cpu: "100m"
-    memory: "256Mi"
-  limits:
-    cpu: "500m"
-    memory: "512Mi"
-
-# 5. Tài nguyên cho MinIO Console (Khắc phục Warning cuối cùng)
-console:
-  resources:
-    requests:
-      cpu: "50m"
-      memory: "128Mi"
-    limits:
-      cpu: "200m"
-      memory: "256Mi"
-
-# 6. Cấu hình mạng (NodePort để truy cập từ trình duyệt máy thật)
-service:
-  type: NodePort
-  nodePorts:
-    api: 30080
-
+replicas: 1
 consoleService:
   type: NodePort
-  nodePorts:
-    console: 30900
+  port: 9090
+  nodePort: 30090
