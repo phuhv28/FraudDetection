@@ -1,0 +1,50 @@
+#!/bin/bash
+set -e
+
+# 1. Tạo cụm Kubernetes với kind
+kind create cluster --name fraud --config kind-config.yaml
+
+# 2. Cài Flink Operator (Giữ nguyên các bước của bạn)
+kubectl apply -f https://github.com/cert-manager/cert-manager/releases/latest/download/cert-manager.yaml
+sleep 15
+kubectl wait --for=condition=ready pod -l app.kubernetes.io/instance=cert-manager -n cert-manager --timeout=120s 
+
+helm repo add flink-operator-repo https://archive.apache.org/dist/flink/flink-kubernetes-operator-1.12.0/
+helm repo update
+helm install flink-kubernetes-operator flink-operator-repo/flink-kubernetes-operator --set webhook.create=false
+
+# 3. Deploy Kafka
+kubectl apply -f kafka.yaml
+echo "Waiting for Kafka pod to be ready..."
+kubectl wait --for=condition=ready pod -l app=kafka --timeout=300s
+
+# ĐỢI KAFKA BROKER THỰC SỰ LẮNG NGHE (Tránh lỗi AdminClient)
+echo "Waiting for Kafka broker to start listening on 29092..."
+KAFKA_POD=$(kubectl get pod -l app=kafka -o jsonpath='{.items[0].metadata.name}')
+until kubectl exec $KAFKA_POD -- bash -c "nc -z localhost 29092" 2>/dev/null; do
+  sleep 2
+done
+
+# 4. Tạo Kafka Topic
+kubectl exec $KAFKA_POD -- kafka-topics --bootstrap-server kafka:29092 --create --if-not-exists --topic transactions --partitions 3 --replication-factor 1
+kubectl exec $KAFKA_POD -- kafka-topics --list --bootstrap-server kafka:29092
+
+# 5. Deploy Flink Job
+kubectl apply -f flink-operator.yaml
+
+# ĐỢI TASKMANAGER XUẤT HIỆN TRƯỚC KHI WAIT
+echo "Waiting for Flink TaskManager to be created..."
+until kubectl get pods -l component=taskmanager 2>/dev/null | grep -q "taskmanager"; do
+  sleep 5
+done
+
+echo "TaskManager found. Waiting for it to be READY..."
+kubectl wait --for=condition=ready pod -l component=taskmanager --timeout=300s
+
+# 6. Test
+DATA='{"trans_date_trans_time": "2020-06-26 23:18:46", "dob": "1982-02-08", "amt": 949.88, "lat": 41.55, "long": -87.4569, "merch_lat": 41.618135, "merch_long": -87.55474699999999, "category": "shopping_net", "gender": "M", "state": "IN", "city_pop": 23727, "trans_count_24h": 1, "amt_sum_24h": 949.88, "trans_count_7d": 1, "amt_sum_7d": 949.88}'
+
+echo "Sending data to Kafka..."
+echo $DATA | kubectl exec -i $KAFKA_POD -- kafka-console-producer --bootstrap-server kafka:29092 --topic transactions
+
+kubectl logs -l component=taskmanager -f
