@@ -1,0 +1,56 @@
+apiVersion: flink.apache.org/v1beta1
+kind: FlinkDeployment
+metadata:
+  name: flink-cluster
+  namespace: default
+spec:
+  image: phuhv102/bigdata:flink-xgboost   # ← custom image
+  flinkVersion: v1_18
+  flinkConfiguration:
+    taskmanager.numberOfTaskSlots: "2"
+  serviceAccount: flink
+
+  jobManager:
+    resource:
+      memory: "1024m"
+      cpu: 0.5
+    podTemplate:
+      spec:
+        containers:
+          - name: flink-main-container
+            imagePullPolicy: Always         # ← pull từ Docker Hub
+            volumeMounts:
+              - name: models-volume
+                mountPath: /mnt/models
+        volumes:
+          - name: models-volume
+            hostPath:
+              path: /mnt/models
+              type: DirectoryOrCreate
+
+  taskManager:
+    resource:
+      memory: "1024m"
+      cpu: 0.5
+    podTemplate:
+      spec:
+        containers:
+          - name: flink-main-container
+            imagePullPolicy: Always         # ← pull từ Docker Hub
+            volumeMounts:
+              - name: models-volume
+                mountPath: /mnt/models
+        volumes:
+          - name: models-volume
+            hostPath:
+              path: /mnt/models
+              type: DirectoryOrCreate
+
+  job:
+    jarURI: local:///mnt/models/realtime-fraud-detection-1.0-SNAPSHOT.jar
+    entryClass: org.example.FraudDetectionFinalJob
+    args:
+      - --bootstrap.servers
+      - kafka:29092
+    parallelism: 2
+    upgradeMode: stateless

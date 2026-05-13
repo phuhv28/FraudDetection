@@ -2,6 +2,7 @@
 
 ### Pre-requisite
 * File .jar đã package
+* Đã docker compose up thành công
 
 ### 1. Khởi tạo Kafka Topic
 
