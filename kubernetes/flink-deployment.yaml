@@ -1,0 +1,464 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: fraud-detection
+  labels:
+    name: fraud-detection
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: fraud-rules-config
+  namespace: fraud-detection
+data:
+  # Rule thresholds (configurable)
+  R1_AMOUNT_THRESHOLD: "100000000"        # VND
+  R2_VELOCITY_AMOUNT_24H: "500000000"     # VND
+  R3_VELOCITY_COUNT_1MIN: "10"            # transactions
+  R4_GEO_DISTANCE_KM: "500"               # km
+  R4_GEO_TIME_MIN: "5"                    # minutes
+  R5_BUSINESS_HOURS_START: "6"            # hour
+  R5_BUSINESS_HOURS_END: "23"             # hour
+  R7_STD_DEV_THRESHOLD: "3"               # sigma
+  
+  # Flink configuration
+  FLINK_JM_HEAP: "1024m"
+  FLINK_TM_HEAP: "1024m"
+  PARALLELISM: "3"
+
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: fraud-detection-secrets
+  namespace: fraud-detection
+type: Opaque
+stringData:
+  redis-host: "redis.storage.svc.cluster.local"
+  minio-host: "minio.storage.svc.cluster.local:9000"
+  minio-access-key: "minioadmin"
+  minio-secret-key: "minioadmin"
+  gemini-api-key: "your-gemini-api-key-here"
+  kafka-bootstrap-servers: "my-cluster-kafka-bootstrap.kafka.svc.cluster.local:9092"
+
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: flink-sa
+  namespace: fraud-detection
+
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: flink-cluster-role
+rules:
+- apiGroups: [""]
+  resources: ["pods", "pods/log", "pods/portforward"]
+  verbs: ["get", "list", "watch", "create", "delete"]
+- apiGroups: [""]
+  resources: ["services"]
+  verbs: ["get", "list", "watch", "create", "delete"]
+- apiGroups: ["apps"]
+  resources: ["deployments", "deployments/scale", "statefulsets"]
+  verbs: ["get", "list", "watch", "create", "delete", "update", "patch"]
+- apiGroups: ["batch"]
+  resources: ["jobs"]
+  verbs: ["get", "list", "watch", "create", "delete"]
+- apiGroups: [""]
+  resources: ["events"]
+  verbs: ["create", "patch"]
+
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: flink-cluster-role-binding
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: flink-cluster-role
+subjects:
+- kind: ServiceAccount
+  name: flink-sa
+  namespace: fraud-detection
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: flink-jobmanager
+  namespace: fraud-detection
+  labels:
+    app: flink
+    component: jobmanager
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: flink
+      component: jobmanager
+  template:
+    metadata:
+      labels:
+        app: flink
+        component: jobmanager
+    spec:
+      serviceAccountName: flink-sa
+      
+      containers:
+      - name: jobmanager
+        image: fraud-detection:latest
+        imagePullPolicy: Never  # For local Kind cluster
+        
+        ports:
+        - containerPort: 6123  # RPC port
+        - containerPort: 8081  # Web UI
+        
+        env:
+        - name: JOB_MANAGER_RPC_ADDRESS
+          value: "flink-jobmanager"
+        - name: FLINK_JM_HEAP
+          valueFrom:
+            configMapKeyRef:
+              name: fraud-rules-config
+              key: FLINK_JM_HEAP
+        - name: FLINK_CONF_taskmanager_memory_jvm-overhead_fraction
+          value: "0.1"
+        
+        # Environment variables for 4-layer pipeline
+        - name: REDIS_HOST
+          valueFrom:
+            secretKeyRef:
+              name: fraud-detection-secrets
+              key: redis-host
+        - name: MINIO_HOST
+          valueFrom:
+            secretKeyRef:
+              name: fraud-detection-secrets
+              key: minio-host
+        - name: MINIO_ACCESS_KEY
+          valueFrom:
+            secretKeyRef:
+              name: fraud-detection-secrets
+              key: minio-access-key
+        - name: MINIO_SECRET_KEY
+          valueFrom:
+            secretKeyRef:
+              name: fraud-detection-secrets
+              key: minio-secret-key
+        - name: GEMINI_API_KEY
+          valueFrom:
+            secretKeyRef:
+              name: fraud-detection-secrets
+              key: gemini-api-key
+        - name: KAFKA_BOOTSTRAP_SERVERS
+          valueFrom:
+            secretKeyRef:
+              name: fraud-detection-secrets
+              key: kafka-bootstrap-servers
+        
+        resources:
+          requests:
+            memory: "1.5Gi"
+            cpu: "500m"
+          limits:
+            memory: "2Gi"
+            cpu: "1000m"
+        
+        livenessProbe:
+          httpGet:
+            path: /
+            port: 8081
+          initialDelaySeconds: 30
+          periodSeconds: 30
+        
+        readinessProbe:
+          httpGet:
+            path: /
+            port: 8081
+          initialDelaySeconds: 20
+          periodSeconds: 10
+        
+        volumeMounts:
+        - name: flink-config
+          mountPath: /opt/flink/conf
+        - name: checkpoints
+          mountPath: /tmp/flink-checkpoints
+      
+      volumes:
+      - name: flink-config
+        configMap:
+          name: flink-config
+      - name: checkpoints
+        emptyDir: {}
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: flink-jobmanager
+  namespace: fraud-detection
+  labels:
+    app: flink
+    component: jobmanager
+spec:
+  type: ClusterIP
+  ports:
+  - name: rpc
+    port: 6123
+    targetPort: 6123
+  - name: ui
+    port: 8081
+    targetPort: 8081
+  selector:
+    app: flink
+    component: jobmanager
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: flink-taskmanager
+  namespace: fraud-detection
+  labels:
+    app: flink
+    component: taskmanager
+spec:
+  replicas: 3  # Parallelism = 3
+  selector:
+    matchLabels:
+      app: flink
+      component: taskmanager
+  template:
+    metadata:
+      labels:
+        app: flink
+        component: taskmanager
+    spec:
+      serviceAccountName: flink-sa
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+          - weight: 100
+            podAffinityTerm:
+              labelSelector:
+                matchExpressions:
+                - key: app
+                  operator: In
+                  values:
+                  - flink
+              topologyKey: kubernetes.io/hostname
+      
+      containers:
+      - name: taskmanager
+        image: fraud-detection:latest
+        imagePullPolicy: Never  # For local Kind cluster
+        
+        ports:
+        - containerPort: 6122  # Task RPC
+        - containerPort: 6125  # Task query
+        
+        env:
+        - name: JOB_MANAGER_RPC_ADDRESS
+          value: "flink-jobmanager"
+        - name: FLINK_TM_HEAP
+          valueFrom:
+            configMapKeyRef:
+              name: fraud-rules-config
+              key: FLINK_TM_HEAP
+        
+        # Environment variables for 4-layer pipeline
+        - name: REDIS_HOST
+          valueFrom:
+            secretKeyRef:
+              name: fraud-detection-secrets
+              key: redis-host
+        - name: MINIO_HOST
+          valueFrom:
+            secretKeyRef:
+              name: fraud-detection-secrets
+              key: minio-host
+        - name: MINIO_ACCESS_KEY
+          valueFrom:
+            secretKeyRef:
+              name: fraud-detection-secrets
+              key: minio-access-key
+        - name: MINIO_SECRET_KEY
+          valueFrom:
+            secretKeyRef:
+              name: fraud-detection-secrets
+              key: minio-secret-key
+        - name: GEMINI_API_KEY
+          valueFrom:
+            secretKeyRef:
+              name: fraud-detection-secrets
+              key: gemini-api-key
+        - name: KAFKA_BOOTSTRAP_SERVERS
+          valueFrom:
+            secretKeyRef:
+              name: fraud-detection-secrets
+              key: kafka-bootstrap-servers
+        
+        resources:
+          requests:
+            memory: "1.5Gi"
+            cpu: "500m"
+          limits:
+            memory: "2Gi"
+            cpu: "1000m"
+        
+        livenessProbe:
+          tcpSocket:
+            port: 6122
+          initialDelaySeconds: 30
+          periodSeconds: 30
+        
+        readinessProbe:
+          tcpSocket:
+            port: 6122
+          initialDelaySeconds: 20
+          periodSeconds: 10
+        
+        volumeMounts:
+        - name: flink-config
+          mountPath: /opt/flink/conf
+      
+      volumes:
+      - name: flink-config
+        configMap:
+          name: flink-config
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: flink-config
+  namespace: fraud-detection
+data:
+  flink-conf.yaml: |
+    jobmanager.rpc.address: flink-jobmanager
+    jobmanager.rpc.port: 6123
+    jobmanager.memory.process.size: 1600m
+    taskmanager.memory.process.size: 1600m
+    taskmanager.numberOfTaskSlots: 1
+    parallelism.default: 3
+    
+    # Checkpoint configuration for exactly-once
+    state.checkpoints.dir: file:///tmp/flink-checkpoints
+    state.backend: filesystem
+    state.backend.async: true
+    state.backend.fs.memory-threshold: 1048576
+    state.backend.fs.check-point-dir: file:///tmp/flink-checkpoints
+    
+    # Network
+    taskmanager.network.bind-policy: ip
+    
+    # Web UI
+    rest.port: 8081
+    
+    # High Availability
+    high-availability: none
+
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: flink-fraud-detection-job
+  namespace: fraud-detection
+spec:
+  backoffLimit: 3
+  template:
+    metadata:
+      labels:
+        app: flink-job
+    spec:
+      serviceAccountName: flink-sa
+      restartPolicy: Never
+      
+      containers:
+      - name: flink-job-runner
+        image: fraud-detection:latest
+        imagePullPolicy: Never
+        
+        command: 
+        - "/bin/bash"
+        - "-c"
+        - |
+          echo "🚀 Starting Flink Fraud Detection Job..."
+          python /app/flink/flink_fraud_pipeline_complete.py
+        
+        env:
+        - name: JOB_MANAGER_RPC_ADDRESS
+          value: "flink-jobmanager.fraud-detection.svc.cluster.local"
+        - name: JOB_MANAGER_RPC_PORT
+          value: "6123"
+        
+        # Environment variables for 4-layer pipeline
+        - name: REDIS_HOST
+          valueFrom:
+            secretKeyRef:
+              name: fraud-detection-secrets
+              key: redis-host
+        - name: MINIO_HOST
+          valueFrom:
+            secretKeyRef:
+              name: fraud-detection-secrets
+              key: minio-host
+        - name: MINIO_ACCESS_KEY
+          valueFrom:
+            secretKeyRef:
+              name: fraud-detection-secrets
+              key: minio-access-key
+        - name: MINIO_SECRET_KEY
+          valueFrom:
+            secretKeyRef:
+              name: fraud-detection-secrets
+              key: minio-secret-key
+        - name: GEMINI_API_KEY
+          valueFrom:
+            secretKeyRef:
+              name: fraud-detection-secrets
+              key: gemini-api-key
+        - name: KAFKA_BOOTSTRAP_SERVERS
+          valueFrom:
+            secretKeyRef:
+              name: fraud-detection-secrets
+              key: kafka-bootstrap-servers
+        
+        resources:
+          requests:
+            memory: "1.5Gi"
+            cpu: "500m"
+          limits:
+            memory: "2Gi"
+            cpu: "1000m"
+
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: flink-taskmanager-hpa
+  namespace: fraud-detection
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: flink-taskmanager
+  minReplicas: 3
+  maxReplicas: 10
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 70
+  - type: Resource
+    resource:
+      name: memory
+      target:
+        type: Utilization
+        averageUtilization: 80
