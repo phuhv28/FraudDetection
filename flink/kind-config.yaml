@@ -1,0 +1,7 @@
+kind: Cluster
+apiVersion: kind.x-k8s.io/v1alpha4
+nodes:
+- role: control-plane
+  extraMounts:
+  - hostPath: ./models      # Your local laptop path
+    containerPath: /mnt/models # The path inside the kind node
