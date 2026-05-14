@@ -1,0 +1,30 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: fraud-producer
+  namespace: kafka
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: fraud-producer
+  template:
+    metadata:
+      labels:
+        app: fraud-producer
+    spec:
+      containers:
+      - name: producer-container
+        image: nguyenhnam2k5/kafka-producer:3.0
+        imagePullPolicy: IfNotPresent
+        env:
+        - name: PYTHONUNBUFFERED
+          value: "1"
+        - name: KAFKA_BOOTSTRAP_SERVERS
+          # SỬ DỤNG FQDN để kết nối xuyên Namespace
+          value: "kafka.kafka.svc.cluster.local:29092"
+        resources:
+          limits:
+            memory: "512Mi"
+            cpu: "500m"
+

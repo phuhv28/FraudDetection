@@ -95,3 +95,9 @@ Tạo topic transaction.raw để xử lý các event từ producer
 ```bash
 kubectl apply -f transaction-raw-topic.yaml
 ```
+
+## Deploy fraud_producer
+
+```bash
+kubectl apply -f producer-deployment.yaml
+```

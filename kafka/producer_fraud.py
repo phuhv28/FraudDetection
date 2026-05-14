@@ -5,56 +5,48 @@ from confluent_kafka import Producer
 
 # Cấu hình Kafka
 conf = {
-    'bootstrap.servers': 'localhost:9092',
+    'bootstrap.servers': 'kafka.kafka.svc.cluster.local:29092',
     'client.id': 'fraud-csv-producer',
-    'acks': '1'
+    'acks': '1' # Gửi nhanh, không cần đợi xác nhận từ tất cả broker
 }
 
 producer = Producer(conf)
-
-COLUMNS = [
-    "trans_date_trans_time",
-    "cc_num",
-    "merchant",
-    "category",
-    "amt",
-    "trans_num",
-    "merch_lat",
-    "merch_long"
-]
 
 def delivery_report(err, msg):
     if err is not None:
         print(f"❌ Gửi lỗi: {err}")
     else:
+        # Giải mã key để log ra màn hình
         print(f"✅ Đã gửi giao dịch của thẻ: {msg.key().decode('utf-8')}")
 
 def stream_csv(file_path):
-    print("🚀 Bắt đầu đẩy dữ liệu vào Kafka...")
+    print(f"🚀 Bắt đầu đẩy dữ liệu vào Kafka theo từng chunk...")
 
+    # Đọc mỗi lần 1000 dòng
     chunk_size = 1000
-
-    for chunk in pd.read_csv(file_path, chunksize=chunk_size, usecols=COLUMNS):
-
-        for _, row in chunk.iterrows():
+    for chunk in pd.read_csv(file_path, chunksize=chunk_size):
+        for index, row in chunk.iterrows():
             payload = row.to_dict()
-
-            key_value = str(payload["cc_num"])
+            key_value = str(payload['cc_num'])
 
             producer.produce(
-                topic="transaction",
+                topic='transaction',
                 key=key_value,
-                value=json.dumps(payload).encode("utf-8"),
+                value=json.dumps(payload).encode('utf-8'),
                 callback=delivery_report
             )
-
             producer.poll(0)
             time.sleep(1)
 
+        # Flush sau mỗi chunk để giải phóng bộ nhớ đệm của Kafka Producer
         producer.flush()
-        print(f"✅ Xong chunk {chunk_size} dòng")
+        print(f"✅ Đã xử lý xong một cụm {chunk_size} dòng.")
 
-    print("🏁 Hoàn thành")
+    print("🏁 Hoàn thành.")
 
 if __name__ == "__main__":
-    stream_csv("fraud_data.csv")
+    while True: # Thêm dòng này để chạy liên tục
+        stream_csv('fraud_data.csv')
+        print("🔄 Đã hết file, bắt đầu lại từ đầu...")
+        time.sleep(5) # Nghỉ 5s trước khi lặp lại
+
