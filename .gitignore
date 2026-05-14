@@ -3,3 +3,4 @@ fraud_detector/.venv/
 kafka/__pycache__/
 flink/venv/
 flink/__pycache__/
+flinkapp/realtime-fraud-detection-1.0-SNAPSHOT.jar
