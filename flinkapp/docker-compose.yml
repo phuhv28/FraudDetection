@@ -1,6 +1,6 @@
 services:
   kafka:
-    image: confluentinc/cp-kafka:latest
+    image: confluentinc/cp-kafka:7.6.0
     container_name: kafka-kraft
     ports:
       - "9092:9092"
@@ -13,35 +13,57 @@ services:
       KAFKA_CONTROLLER_QUORUM_VOTERS: '1@kafka:9093'
       KAFKA_CONTROLLER_LISTENER_NAMES: 'CONTROLLER'
       KAFKA_INTER_BROKER_LISTENER_NAME: 'INTERNAL'
-      KAFKA_CLUSTER_ID: 'MkU3OEVBNTcwNTJENDM2Qk'
+      CLUSTER_ID: 'MkU3OEVBNTcwNTJENDM2Qk'
       KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
       KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
       KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
 
   jobmanager:
-    image: flink:1.18.1-java11
+    image: phuhv102/bigdata:flink-xgboost
     container_name: flink-jobmanager
-    depends_on:
-      - kafka
     ports:
       - "8081:8081"
-    command: jobmanager
+    # Flink sẽ tự tìm JAR trong usrlib nên không cần tham số --project-jar nữa
+    command: >
+      standalone-job 
+      --job-classname org.example.FraudDetectionFinalJob
+      --jars local:///opt/flink/usrlib/realtime-fraud-detection-1.0-SNAPSHOT.jar
+      --bootstrap.servers kafka:29092
+    volumes:
+      # Mount file JAR vào usrlib để tự động load vào classpath
+      - ./models/realtime-fraud-detection-1.0-SNAPSHOT.jar:/opt/flink/usrlib/job.jar
+      # Vẫn mount cả thư mục models nếu code cần load file .xgboost hoặc các tài nguyên khác
+      - ./models:/mnt/models
     environment:
       - |
         FLINK_PROPERTIES=
         jobmanager.rpc.address: jobmanager
+        parallelism.default: 2
 
   taskmanager:
-    image: flink:1.18.1-java11
+    image: phuhv102/bigdata:flink-xgboost
     container_name: flink-taskmanager
     depends_on:
       - jobmanager
-      - kafka
     command: taskmanager
     volumes:
+      # Quan trọng: TaskManager cũng cần có JAR trong classpath để thực thi
+      - ./models/realtime-fraud-detection-1.0-SNAPSHOT.jar:/opt/flink/usrlib/job.jar
       - ./models:/mnt/models
     environment:
       - |
         FLINK_PROPERTIES=
         jobmanager.rpc.address: jobmanager
         taskmanager.numberOfTaskSlots: 2
+        parallelism.default: 2
+  redis:
+    image: redis:7.2-alpine
+    container_name: redis
+    ports:
+      - "6379:6379"
+    command: redis-server --maxmemory 512mb --maxmemory-policy allkeys-lru --save ""
+    healthcheck:
+      test: [ "CMD", "redis-cli", "ping" ]
+      interval: 10s
+      timeout: 5s
+      retries: 5

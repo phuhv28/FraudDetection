@@ -16,13 +16,23 @@
       </plugin>
       <plugin>
         <artifactId>maven-shade-plugin</artifactId>
-        <version>3.2.4</version>
+        <version>3.4.1</version>
         <executions>
           <execution>
             <phase>package</phase>
             <goals>
               <goal>shade</goal>
             </goals>
+            <configuration>
+              <transformers>
+                <transformer>
+                  <mainClass>org.example.FraudDetectionJob</mainClass>
+                </transformer>
+              </transformers>
+              <shadedArtifactAttached>false</shadedArtifactAttached>
+              <outputFile>${project.build.directory}/realtime-fraud-detection-1.0-SNAPSHOT.jar</outputFile>
+              <minimizeJar>false</minimizeJar>
+            </configuration>
           </execution>
         </executions>
       </plugin>

@@ -1,8 +1,0 @@
-rootUser: "admin"
-rootPassword: "admin123"
-mode: standalone
-replicas: 1
-consoleService:
-  type: NodePort
-  port: 9090
-  nodePort: 30090
