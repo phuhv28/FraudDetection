@@ -38,6 +38,35 @@ kubectl apply -f redis.yaml
 kubectl wait --for=condition=ready pod -l app=minio --timeout=300s
 kubectl wait --for=condition=ready pod -l app=redis --timeout=300s
 
+# =====================================================================
+# 5.5. TỰ ĐỘNG KHỞI TẠO MINIO BUCKET CHO FLINK DATA LAKE
+# =====================================================================
+echo "=== Đang tự động cấu hình MinIO Bucket ==="
+MINIO_POD=$(kubectl get pod -l app=minio -o jsonpath='{.items[0].metadata.name}')
+BUCKET_NAME="fraud-data-lake" # Thay đổi tên bucket khớp với biến 'minioBucket' trong code Flink của bạn
+MINIO_USER="minioadmin"
+MINIO_PASS="minioadmin"
+
+echo "Đang khởi tạo lệnh tạo bucket trong Pod: $MINIO_POD"
+kubectl exec $MINIO_POD -- /bin/sh -c "
+  # Định nghĩa alias quyền root tối cao nội bộ
+  mc alias set root_local http://localhost:9000 $MINIO_USER $MINIO_PASS > /dev/null 2>&1
+
+  # Kiểm tra và tạo bucket nếu chưa tồn tại
+  if mc ls root_local/$BUCKET_NAME > /dev/null 2>&1; then
+    echo '>>> Bucket \"$BUCKET_NAME\" đã tồn tại rồi, bỏ qua.'
+  else
+    echo '>>> Bucket \"$BUCKET_NAME\" chưa có. Đang tiến hành tạo mới...'
+    if mc mb root_local/$BUCKET_NAME; then
+      echo '>>> Tạo Bucket thành công!'
+    else
+      echo '>>> LỖI: Không thể tạo Bucket.'
+      exit 1
+    fi
+  fi
+"
+# =====================================================================
+
 # 6. Deploy Flink Job
 kubectl apply -f flink-operator.yaml
 
