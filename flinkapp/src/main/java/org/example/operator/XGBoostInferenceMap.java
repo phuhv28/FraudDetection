@@ -43,7 +43,7 @@ import java.util.Map;
  */
 public class XGBoostInferenceMap extends RichMapFunction<Map<String, Object>, DetectionResult> {
 
-    private static final String MODEL_PATH = "./models/best_fraud_model_096.json";
+    private static final String MODEL_PATH = "/mnt/models/best_fraud_model_096.json";
     private static final double ML_THRESHOLD = 0.2426;
 
     private transient Booster booster;

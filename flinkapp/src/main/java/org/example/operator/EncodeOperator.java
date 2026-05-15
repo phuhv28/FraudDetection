@@ -25,7 +25,7 @@ import java.util.Map;
  */
 public class EncodeOperator extends RichMapFunction<Map<String, Object>, Map<String, Object>> {
 
-    private static final String ENCODER_PATH = "./models/label_encoders.json";
+    private static final String ENCODER_PATH = "/mnt/models/label_encoders.json";
 
     private transient Map<String, Map<String, Integer>> encoders;
 
