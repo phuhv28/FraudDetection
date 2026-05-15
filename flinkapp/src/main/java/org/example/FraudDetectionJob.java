@@ -21,7 +21,7 @@ import java.util.Map;
  * ║                                                                  ║
  * ║  [Kafka: transactions]                                           ║
  * ║        │                                                         ║
- * ║   ParseOperator          ─── branch ──► MinIOSink (Data Lake)   ║
+ * ║   ParseOperator          ─── branch ──► MinIOSink (Data Lake)    ║
  * ║        │                                                         ║
  * ║   ExtractFeaturesOperator  (hour, dayofweek, age, distance)      ║
  * ║        │                                                         ║

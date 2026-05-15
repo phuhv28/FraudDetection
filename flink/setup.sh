@@ -27,9 +27,18 @@ done
 
 # 4. Tạo Kafka Topic
 kubectl exec $KAFKA_POD -- kafka-topics --bootstrap-server kafka:29092 --create --if-not-exists --topic transactions --partitions 3 --replication-factor 1
+kubectl exec $KAFKA_POD -- kafka-topics --bootstrap-server kafka:29092 --create --if-not-exists --topic fraud-alerts --partitions 3 --replication-factor 1
+
 kubectl exec $KAFKA_POD -- kafka-topics --list --bootstrap-server kafka:29092
 
-# 5. Deploy Flink Job
+# 5. Deploy MinIO và Redis
+echo "Deploying MinIO and Redis..."
+kubectl apply -f minio.yaml
+kubectl apply -f redis.yaml
+kubectl wait --for=condition=ready pod -l app=minio --timeout=300s
+kubectl wait --for=condition=ready pod -l app=redis --timeout=300s
+
+# 6. Deploy Flink Job
 kubectl apply -f flink-operator.yaml
 
 # ĐỢI TASKMANAGER XUẤT HIỆN TRƯỚC KHI WAIT
@@ -41,10 +50,9 @@ done
 echo "TaskManager found. Waiting for it to be READY..."
 kubectl wait --for=condition=ready pod -l component=taskmanager --timeout=300s
 
-# 6. Test
-DATA='{"trans_date_trans_time": "2020-06-26 23:18:46", "dob": "1982-02-08", "amt": 949.88, "lat": 41.55, "long": -87.4569, "merch_lat": 41.618135, "merch_long": -87.55474699999999, "category": "shopping_net", "gender": "M", "state": "IN", "city_pop": 23727, "trans_count_24h": 1, "amt_sum_24h": 949.88, "trans_count_7d": 1, "amt_sum_7d": 949.88}'
+# 7. Deploy producer
+kubectl apply -f producer-deployment.yaml
+kubectl wait --for=condition=ready pod -l app=fraud-producer --timeout=300s
 
-echo "Sending data to Kafka..."
-echo $DATA | kubectl exec -i $KAFKA_POD -- kafka-console-producer --bootstrap-server kafka:29092 --topic transactions
-
+# 8. Xem logs
 kubectl logs -l component=taskmanager -f
