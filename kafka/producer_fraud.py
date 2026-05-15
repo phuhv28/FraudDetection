@@ -5,7 +5,7 @@ from confluent_kafka import Producer
 
 # Cấu hình Kafka
 conf = {
-    'bootstrap.servers': 'kafka.kafka.svc.cluster.local:29092',
+    'bootstrap.servers': 'kafka.default.svc.cluster.local:29092',
     'client.id': 'fraud-csv-producer',
     'acks': '1' # Gửi nhanh, không cần đợi xác nhận từ tất cả broker
 }

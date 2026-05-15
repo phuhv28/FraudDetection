@@ -15,14 +15,14 @@ spec:
     spec:
       containers:
       - name: producer-container
-        image: nguyenhnam2k5/kafka-producer:3.0
+        image: nguyenhnam2k5/kafka-producer:7.0
         imagePullPolicy: IfNotPresent
         env:
         - name: PYTHONUNBUFFERED
           value: "1"
         - name: KAFKA_BOOTSTRAP_SERVERS
           # SỬ DỤNG FQDN để kết nối xuyên Namespace
-          value: "kafka.kafka.svc.cluster.local:29092"
+          value: "kafka.default.svc.cluster.local:29092"
         resources:
           limits:
             memory: "512Mi"
