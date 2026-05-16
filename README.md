@@ -15,7 +15,7 @@ Hệ thống phát hiện gian lận thời gian thực sử dụng **Apache Fli
 | [kubectl](https://kubernetes.io/docs/tasks/tools/) | Quản lý tài nguyên K8s | `kubectl version --client` |
 | [Helm](https://helm.sh/docs/intro/install/) | Cài Flink Operator | `helm version` |
 | [netcat (nc)](https://netcat.sourceforge.net/) | Kiểm tra kết nối Kafka | `nc -h` |
-| [File JAR job](https://drive.google.com/drive/folders/1b8qV_gkCCGQCGpOEJMyXYMTlhWPheEVH?usp=sharing)|||
+| [File JAR job](https://drive.google.com/drive/folders/1b8qV_gkCCGQCGpOEJMyXYMTlhWPheEVH?usp=sharing)||ls ./models|
 
 
 > **Lưu ý:** Lưu ý: File JAR phải được đặt trong folder ./models
