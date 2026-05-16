@@ -1,9 +1,6 @@
 fraud_detector/__pycache__/
 fraud_detector/.venv/
-kafka/__pycache__/
-flink/venv/
-flink/__pycache__/
-flinkapp/realtime-fraud-detection-1.0-SNAPSHOT.jar
-flink/models/realtime-fraud-detection-1.0-SNAPSHOT.jar
-flinkapp/target/
-flinkapp/.idea/
+job/realtime-fraud-detection-1.0-SNAPSHOT.jar
+models/realtime-fraud-detection-1.0-SNAPSHOT.jar
+job/target/
+job/.idea/
