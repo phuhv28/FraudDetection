@@ -1,26 +1,64 @@
-# Real-time Fraud Detection với Flink + Kafka + XGBoost trên Kubernetes (kind)
+# 🛡️ Fraud Detection on Kubernetes — Hướng dẫn triển khai
 
-Pipeline phát hiện gian lận theo thời gian thực: Kafka nhận transaction → Flink xử lý → XGBoost dự đoán.
-
----
-
-## Kiến trúc
-
-```
-Producer → Kafka (transactions) → Flink Job → XGBoost Model → Fraud Alert
-```
-
-## Yêu cầu
-
-- Docker
-- kind
-- kubectl
-- Flink Kubernetes Operator
-- Docker Hub account
+Hệ thống phát hiện gian lận thời gian thực sử dụng **Apache Flink**, **Kafka**, **MinIO**, và **Redis** chạy trên cụm **Kubernetes**.
 
 ---
 
-## 1. Tạo cụm Kubernetes với kind
+## ✅ Tiền điều kiện
+
+Đảm bảo máy bạn đã cài đặt đầy đủ các công cụ sau trước khi bắt đầu:
+
+| Công cụ | Mục đích | Kiểm tra |
+|---|---|---|
+| [Docker](https://docs.docker.com/get-docker/) | Chạy container | `docker --version` |
+| [kind](https://kind.sigs.k8s.io/docs/user/quick-start/) | Tạo cụm K8s cục bộ | `kind --version` |
+| [kubectl](https://kubernetes.io/docs/tasks/tools/) | Quản lý tài nguyên K8s | `kubectl version --client` |
+| [Helm](https://helm.sh/docs/intro/install/) | Cài Flink Operator | `helm version` |
+| [netcat (nc)](https://netcat.sourceforge.net/) | Kiểm tra kết nối Kafka | `nc -h` |
+| [File JAR job](https://drive.google.com/drive/folders/1b8qV_gkCCGQCGpOEJMyXYMTlhWPheEVH?usp=sharing)|||
+
+
+> **Lưu ý:** Lưu ý: File JAR phải được đặt trong folder ./flink/models
+
+---
+
+## 🚀 Cách 1 — Dùng script tự động `setup.sh`
+
+Đây là cách nhanh nhất để dựng toàn bộ hệ thống chỉ với một lệnh.
+
+### Bước 1 — Cấp quyền thực thi cho script
+
+```bash
+chmod +x setup.sh
+```
+
+### Bước 2 — Chạy script
+
+```bash
+./setup.sh
+```
+
+Script sẽ tự động thực hiện toàn bộ các bước bên dưới theo thứ tự và dừng lại nếu có bất kỳ lỗi nào xảy ra (`set -e`).
+
+### Bước 3 — Theo dõi logs
+
+Sau khi triển khai xong, script sẽ tự động stream logs từ Flink TaskManager:
+
+```bash
+kubectl logs -l component=taskmanager -f
+```
+
+Nhấn `Ctrl + C` để thoát khỏi chế độ xem logs khi cần.
+
+---
+
+## 🔧 Cách 2 — Thực hiện thủ công từng bước
+
+Thực hiện theo đúng thứ tự các bước sau.
+
+---
+
+### Bước 1 — Tạo cụm Kubernetes với kind
 
 ```bash
 kind create cluster --name fraud --config kind-config.yaml
@@ -28,15 +66,19 @@ kind create cluster --name fraud --config kind-config.yaml
 
 ---
 
-## 2. Cài Flink Kubernetes Operator
+### Bước 2 — Cài Flink Operator
+
+**2.1. Cài cert-manager (dependency của Flink Operator):**
 
 ```bash
-# Cài cert-manager (dependency của Operator)
 kubectl apply -f https://github.com/cert-manager/cert-manager/releases/latest/download/cert-manager.yaml
-kubectl wait --for=condition=ready pod -l app=cert-manager -n cert-manager --timeout=120s 
+```
 
-# Cài Flink Operator qua Helm
-helm repo add flink-operator-repo https://archive.apache.org/dist/flink/flink-kubernetes-operator-1.12.0/
+**2.2. Thêm Helm repo và cài Flink Kubernetes Operator:**
+
+```bash
+helm repo add flink-operator-repo \
+  https://archive.apache.org/dist/flink/flink-kubernetes-operator-1.12.0/
 helm repo update
 helm install flink-kubernetes-operator flink-operator-repo/flink-kubernetes-operator \
   --set webhook.create=false
@@ -44,78 +86,124 @@ helm install flink-kubernetes-operator flink-operator-repo/flink-kubernetes-oper
 
 ---
 
-## 3. Deploy Kafka (KRaft mode — không cần Zookeeper)
+### Bước 3 — Deploy Kafka
 
 ```bash
 kubectl apply -f kafka.yaml
 ```
 
-> **Lưu ý về LISTENERS vs ADVERTISED_LISTENERS:**
-> - `KAFKA_LISTENERS`: Kafka lắng nghe thực tế trên `0.0.0.0` (tất cả interface)
-> - `KAFKA_ADVERTISED_LISTENERS`: Địa chỉ Kafka thông báo cho client kết nối lại
->   - `INTERNAL://kafka:29092` → cho các service trong Docker network
->   - `EXTERNAL://localhost:9092` → cho client trên máy host
+### Bước 4 — Tạo Kafka Topics
+
+```bash
+# Tạo topic transactions
+kubectl exec $KAFKA_POD -- kafka-topics \
+  --bootstrap-server kafka:29092 \
+  --create --if-not-exists \
+  --topic transactions \
+  --partitions 3 \
+  --replication-factor 1
+
+# Tạo topic fraud-alerts
+kubectl exec $KAFKA_POD -- kafka-topics \
+  --bootstrap-server kafka:29092 \
+  --create --if-not-exists \
+  --topic fraud-alerts \
+  --partitions 3 \
+  --replication-factor 1
+
+# Kiểm tra danh sách topics
+kubectl exec $KAFKA_POD -- kafka-topics \
+  --list --bootstrap-server kafka:29092
+```
 
 ---
 
-## 4. Tạo Kafka Topic
+### Bước 5 — Deploy MinIO và Redis
+
+**5.1. Apply manifests:**
 
 ```bash
-kubectl exec -it $(kubectl get pod -l app=kafka -o jsonpath='{.items[0].metadata.name}') -- bash -c "kafka-topics --bootstrap-server kafka:29092 --create --if-not-exists --topic transactions --partitions 3 --replication-factor 1"
+kubectl apply -f minio.yaml
+kubectl apply -f redis.yaml
 ```
 
-Kiểm tra topic đã tạo:
+**5.2. Khởi tạo MinIO Bucket cho Flink Data Lake**
+
+**5.2.1. Lấy tên MinIO Pod:**
 
 ```bash
-kubectl exec -it \
-  $(kubectl get pod -l app=kafka -o jsonpath='{.items[0].metadata.name}') \
-  -- bash -c "kafka-topics --list --bootstrap-server kafka:29092"
+MINIO_POD=$(kubectl get pod -l app=minio -o jsonpath='{.items[0].metadata.name}')
 ```
 
-> Dùng `kafka:29092` (INTERNAL) vì đang exec **bên trong** Kubernetes network.
+**5.2.2. Tạo bucket `fraud-data-lake` bên trong Pod:**
+
+```bash
+kubectl exec $MINIO_POD -- /bin/sh -c "
+  mc alias set root_local http://localhost:9000 minioadmin minioadmin > /dev/null 2>&1
+
+  if mc ls root_local/fraud-data-lake > /dev/null 2>&1; then
+    echo 'Bucket đã tồn tại, bỏ qua.'
+  else
+    echo 'Đang tạo bucket fraud-data-lake...'
+    mc mb root_local/fraud-data-lake && echo 'Tạo bucket thành công!'
+  fi
+"
+```
+
+> Tên bucket `fraud-data-lake` phải khớp với biến `minioBucket` được khai báo trong code Flink.
 
 ---
 
-## 5. Deploy Flink Job
-
-Chuẩn bị:
-- File `.jar` của job: `realtime-fraud-detection-1.0-SNAPSHOT.jar`
-- XGBoost model: `best_fraud_model_096.json`
-- Label encoders: `label_encoders.json`
-
-Đặt tất cả vào `./models/` trên máy host.
+### Bước 6 — Deploy Flink Job
 
 ```bash
 kubectl apply -f flink-operator.yaml
-kubectl get pods -w
 ```
-Doi den khi cac pods READY het roi chay buoc tiep theo.
+---
+
+### Bước 7 — Deploy Producer
+
+```bash
+kubectl apply -f producer-deployment.yaml
+```
 
 ---
 
-## 6. Test
-
-### Push event vào Kafka
-
-```bash
-  kubectl exec -it   $(kubectl get pod -l app=kafka -o jsonpath='{.items[0].metadata.name}')   -- bash -c "kafka-console-producer --bootstrap-server kafka:29092 --topic transactions"
-```
-
-Roi paste:
-
-```
-{"trans_date_trans_time": "2020-06-26 23:18:46", "dob": "1982-02-08", "amt": 949.88, "lat": 41.55, "long": -87.4569, "merch_lat": 41.618135, "merch_long": -87.55474699999999, "category": "shopping_net", "gender": "M", "state": "IN", "city_pop": 23727, "trans_count_24h": 1, "amt_sum_24h": 949.88, "trans_count_7d": 1, "amt_sum_7d": 949.88}
-```
-
-
-### Xem kết quả
+### Bước 8 — Xem logs Flink TaskManager
 
 ```bash
 kubectl logs -l component=taskmanager -f
 ```
 
-Kết quả khi phát hiện gian lận:
+Nhấn `Ctrl + C` để thoát.
 
+---
+
+## 📋 Kiểm tra trạng thái hệ thống
+
+Sau khi triển khai xong, bạn có thể dùng các lệnh sau để kiểm tra tổng quan:
+
+```bash
+# Xem toàn bộ pods
+kubectl get pods
+
+# Xem logs Kafka
+kubectl logs -l app=kafka
+
+# Xem logs Producer
+kubectl logs -l app=fraud-producer
+
+# Xem logs Flink JobManager
+kubectl logs -l component=jobmanager
 ```
-Fraud Alert! Score: 0.8234
+
+---
+
+## 🗑️ Dọn dẹp
+
+Để xóa toàn bộ cụm và giải phóng tài nguyên:
+
+```bash
+chmod +x clean.sh
+./clean.sh
 ```

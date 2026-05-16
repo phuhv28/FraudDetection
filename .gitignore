@@ -6,3 +6,4 @@ flink/__pycache__/
 flinkapp/realtime-fraud-detection-1.0-SNAPSHOT.jar
 flink/models/realtime-fraud-detection-1.0-SNAPSHOT.jar
 flinkapp/target/
+flinkapp/.idea/
