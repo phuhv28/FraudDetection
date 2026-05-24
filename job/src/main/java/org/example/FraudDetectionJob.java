@@ -14,6 +14,9 @@ import org.example.sink.MinIOSink;
 
 import java.util.Map;
 
+import io.prometheus.client.exporter.HTTPServer;
+
+
 /**
  * ╔══════════════════════════════════════════════════════════════════╗
  * ║            Kappa Architecture — Real-time Fraud Detection        ║
@@ -46,6 +49,9 @@ import java.util.Map;
 public class FraudDetectionJob {
 
     public static void main(String[] args) throws Exception {
+
+        HTTPServer server = new HTTPServer(8000);
+
         final StreamExecutionEnvironment env = StreamExecutionEnvironment.getExecutionEnvironment();
         env.enableCheckpointing(30_000); // checkpoint mỗi 30 giây để đảm bảo exactly-once
 
@@ -79,7 +85,7 @@ public class FraudDetectionJob {
         // Lưu toàn bộ raw event vào MinIO ngay sau khi parse,
         // trước bất kỳ transform nào để đảm bảo tính toàn vẹn dữ liệu.
         parsed.addSink(new MinIOSink(minioEndpoint, minioBucket, minioAccessKey, minioSecretKey))
-              .name("minio-data-lake");
+                .name("minio-data-lake");
 
         // ── B. Stream Processing (tiếp) ───────────────────────────────────────
 
@@ -106,9 +112,14 @@ public class FraudDetectionJob {
                 .name("rule-engine");
 
         // Layer 6: ML Inference — tính fraud score bằng XGBoost
+//        DataStream<DetectionResult> results = ruleApplied
+//                .map(new XGBoostInferenceMap())
+//                .name("xgboost-inference");
+
         DataStream<DetectionResult> results = ruleApplied
                 .map(new XGBoostInferenceMap())
-                .name("xgboost-inference");
+                .map(new FraudMetricsMap())
+                .name("fraud-metrics");
 
         // ── D. Action & Dashboard ─────────────────────────────────────────────
         // Chỉ emit khi fraud score vượt ngưỡng HOẶC có rule bị vi phạm
