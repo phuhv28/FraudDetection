@@ -42,7 +42,6 @@ def stream_csv(file_path):
                 callback=delivery_report
             )
             producer.poll(0)
-            time.sleep(1)
 
         # Flush sau mỗi chunk để giải phóng bộ nhớ đệm của Kafka Producer
         producer.flush()

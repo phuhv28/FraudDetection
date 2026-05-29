@@ -1,78 +1,58 @@
 package org.example.operator;
 
-import io.prometheus.client.Counter;
-import io.prometheus.client.Gauge;
-import io.prometheus.client.Histogram;
-import io.prometheus.client.exporter.HTTPServer;
-
 import org.apache.flink.api.common.functions.RichMapFunction;
+import org.apache.flink.configuration.Configuration;
+import org.apache.flink.metrics.Counter;
+import org.apache.flink.metrics.groups.OperatorMetricGroup;
+
 import org.example.model.DetectionResult;
 
 public class FraudMetricsMap
         extends RichMapFunction<DetectionResult, DetectionResult> {
 
-    private static boolean serverStarted = false;
-
     private transient Counter fraudTransactions;
     private transient Counter normalTransactions;
-    private transient Gauge fraudScore;
-    private transient Histogram predictionLatency;
+
+    private transient double latestScore;
+    private transient long lastLatencyMs;
 
     @Override
-    public void open(org.apache.flink.configuration.Configuration parameters)
-            throws Exception {
+    public void open(Configuration parameters) {
 
-        if (!serverStarted) {
-            new HTTPServer(8000);
-            serverStarted = true;
-        }
+        OperatorMetricGroup metricGroup =
+                (OperatorMetricGroup) getRuntimeContext().getMetricGroup();
 
         fraudTransactions =
-                Counter.build()
-                        .name("fraud_transactions_total")
-                        .help("Total fraud transactions")
-                        .register();
+                metricGroup.counter("fraud_transactions_total");
 
         normalTransactions =
-                Counter.build()
-                        .name("normal_transactions_total")
-                        .help("Total normal transactions")
-                        .register();
+                metricGroup.counter("normal_transactions_total");
 
-        fraudScore =
-                Gauge.build()
-                        .name("fraud_score")
-                        .help("Current fraud score")
-                        .register();
+        // Gauge: fraud score
+        metricGroup.gauge("fraud_score", () -> latestScore);
 
-        predictionLatency =
-                Histogram.build()
-                        .name("prediction_latency_seconds")
-                        .help("Prediction latency")
-                        .register();
+        // Gauge: latency (ms)
+        metricGroup.gauge("prediction_latency_ms", () -> lastLatencyMs);
     }
 
     @Override
-    public DetectionResult map(DetectionResult result)
-            throws Exception {
+    public DetectionResult map(DetectionResult result) {
 
-        Histogram.Timer timer =
-                predictionLatency.startTimer();
+        long start = System.currentTimeMillis();
 
-        try {
+        // update score
+        latestScore = result.score;
 
-            fraudScore.set(result.score);
-
-            if (result.isFraud || result.ruleTriggered) {
-                fraudTransactions.inc();
-            } else {
-                normalTransactions.inc();
-            }
-
-            return result;
-
-        } finally {
-            timer.observeDuration();
+        // counters
+        if (result.isFraud || result.ruleTriggered) {
+            fraudTransactions.inc();
+        } else {
+            normalTransactions.inc();
         }
+
+        // latency
+        lastLatencyMs = System.currentTimeMillis() - start;
+
+        return result;
     }
 }

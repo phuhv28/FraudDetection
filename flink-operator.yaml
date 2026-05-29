@@ -7,16 +7,16 @@ spec:
   image: phuhv102/bigdata:flink-xgboost
   flinkVersion: v1_18
   flinkConfiguration:
-    taskmanager.numberOfTaskSlots: "2"
+    taskmanager.numberOfTaskSlots: "4"
     
     metrics.reporter.prom.factory.class: org.apache.flink.metrics.prometheus.PrometheusReporterFactory
-    metrics.reporter.prom.port: 9249
+    metrics.reporter.prom.port: "9249"
   serviceAccount: flink
 
   jobManager:
     resource:
       memory: "1024m"
-      cpu: 1
+      cpu: 2
     podTemplate:
       spec:
         containers:
@@ -32,9 +32,10 @@ spec:
               type: DirectoryOrCreate
 
   taskManager:
+    replicas: 3
     resource:
-      memory: "1024m"
-      cpu: 1
+      memory: "4g"
+      cpu: 2
     podTemplate:
       spec:
         containers:
@@ -68,5 +69,5 @@ spec:
       - --minio.secretKey
       - minioadmin
 
-    parallelism: 1
+    parallelism: 12
     upgradeMode: stateless

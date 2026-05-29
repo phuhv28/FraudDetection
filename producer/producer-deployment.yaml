@@ -15,7 +15,7 @@ spec:
     spec:
       containers:
       - name: producer-container
-        image: nguyenhnam2k5/kafka-producer:9.0
+        image: nguyenhnam2k5/kafka-producer:12.0
         imagePullPolicy: IfNotPresent
         env:
         - name: PYTHONUNBUFFERED

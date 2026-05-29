@@ -50,7 +50,7 @@ public class FraudDetectionJob {
 
     public static void main(String[] args) throws Exception {
 
-        HTTPServer server = new HTTPServer(8000);
+//        HTTPServer server = new HTTPServer(8000);
 
         final StreamExecutionEnvironment env = StreamExecutionEnvironment.getExecutionEnvironment();
         env.enableCheckpointing(30_000); // checkpoint mỗi 30 giây để đảm bảo exactly-once
